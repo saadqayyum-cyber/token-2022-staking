@@ -6,10 +6,13 @@ use anchor_spl::{
     token_interface::{Mint, Token2022, TokenAccount},
 };
 
+use anchor_lang::solana_program::{program::invoke, system_instruction, sysvar::rent::Rent};
+
 declare_id!("GrpKuGPVTNjUCTqfJRMKpph7XZdfuBcc1cTLfRdSm3Xv");
 
 #[program]
 pub mod token_2022_staking {
+
     use super::*;
 
     /**
@@ -135,9 +138,49 @@ pub mod token_2022_staking {
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
         let fee = (amount as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
-
         transfer_checked_with_fee(cpi_ctx, amount, 9, fee)?;
 
+        // Check if vector has enough space
+        let current_len = user_stake_account.stakes.len();
+
+        // Calculate space required for current stakes and the new one
+        let required_space = UserStakeAccount::DISCRIMINATOR
+            + 32
+            + UserStakeAccount::VECTOR_LENGTH_PREFIX
+            + (current_len + 1) * StakeRecord::LEN;
+
+        // If required space is more than the current allocation, reallocate
+        if user_stake_account.to_account_info().data_len() < required_space {
+            let rent = Rent::get()?;
+            // let additional_space = required_space - user_stake_account.to_account_info().data_len();
+            let additional_lamports = rent.minimum_balance(required_space)
+                - rent.minimum_balance(user_stake_account.to_account_info().data_len());
+
+            let payer_account_info = ctx.accounts.user.to_account_info();
+            let target_account_info = user_stake_account.to_account_info();
+            let system_program_info = ctx.accounts.system_program.to_account_info();
+
+            // Reallocate the account
+            user_stake_account
+                .to_account_info()
+                .realloc(required_space, false)?;
+
+            // Transfer additional lamports to cover the new space
+            invoke(
+                &system_instruction::transfer(
+                    payer_account_info.key,
+                    target_account_info.key,
+                    additional_lamports,
+                ),
+                &[
+                    payer_account_info.clone(),
+                    target_account_info.clone(),
+                    system_program_info.clone(),
+                ],
+            )?;
+        }
+
+        // Store Record
         user_stake_account.stakes.push(StakeRecord {
             amount,
             timestamp: Clock::get()?.unix_timestamp,
@@ -570,8 +613,8 @@ pub struct UserStakeAccount {
 }
 
 impl UserStakeAccount {
-    const DISCRIMINATOR: usize = 8;
-    const VECTOR_LENGTH_PREFIX: usize = 4;
+    pub const DISCRIMINATOR: usize = 8;
+    pub const VECTOR_LENGTH_PREFIX: usize = 4;
     const STAKE_RECORD_COUNT: usize = 1; // For more than 1 stake record at a time, user will pay
 
     pub const LEN: usize = Self::DISCRIMINATOR
