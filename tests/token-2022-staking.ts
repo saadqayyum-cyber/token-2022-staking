@@ -1,16 +1,18 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Token2022Staking } from "../target/types/token_2022_staking";
+import * as dotenv from "dotenv";
+
+dotenv.config();
 
 // -------------------------------------------------------------------------------------------------
 //                                GLOBAL VARIABLES
 // -------------------------------------------------------------------------------------------------
 
-const TOKEN_MINT = "x";
-const CONFIG_PDA_SEED = "config-pda-1";
-const CONFIG_ATA_SEED = "config-ata-1";
-
-const AUTHORITY_WALLET = [];
+const TOKEN_MINT = process.env.TOKEN_MINT;
+const CONFIG_PDA_SEED = process.env.CONFIG_PDA_SEED;
+const CONFIG_ATA_SEED = process.env.CONFIG_ATA_SEED;
+const AUTHORITY_WALLET: number[] = JSON.parse(process.env.AUTHORITY_WALLET);
 
 let CONFIG_PDA = { configPda: null, configPdaBump: null };
 let CONFIG_ATA = { configAta: null, configAtaBump: null };
@@ -51,6 +53,17 @@ describe("token-2022-staking", () => {
       .accounts({
         authority: authorityPublicKey,
         tokenMint: TOKEN_MINT_PUBLIC_KEY,
+      })
+      .signers([authorityWallet])
+      .rpc();
+    console.log("Your transaction signature", tx);
+  });
+
+  it("Update Staking Period", async () => {
+    const tx = await program.methods
+      .updateMinStakePeriod(new anchor.BN(60))
+      .accounts({
+        authority: authorityPublicKey,
       })
       .signers([authorityWallet])
       .rpc();
