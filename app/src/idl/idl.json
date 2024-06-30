@@ -1,0 +1,74 @@
+{
+  "version": "0.1.0",
+  "name": "shidonk_staking",
+  "instructions": [
+    {
+      "name": "initialize",
+      "accounts": [
+        { "name": "stakePool", "isMut": true, "isSigner": false },
+        { "name": "stakePoolAta", "isMut": true, "isSigner": false },
+        { "name": "shidonkTokenMint", "isMut": false, "isSigner": false },
+        { "name": "admin", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "stake",
+      "accounts": [
+        { "name": "userStakeAccount", "isMut": true, "isSigner": false },
+        { "name": "stakePool", "isMut": true, "isSigner": false },
+        { "name": "userAta", "isMut": true, "isSigner": false },
+        { "name": "stakePoolAta", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [{ "name": "amount", "type": "u64" }]
+    },
+    {
+      "name": "unstake",
+      "accounts": [
+        { "name": "userStakeAccount", "isMut": true, "isSigner": false },
+        { "name": "stakePool", "isMut": true, "isSigner": false },
+        { "name": "userAta", "isMut": true, "isSigner": false },
+        { "name": "stakePoolAta", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [{ "name": "stakePoolBump", "type": "u8" }],
+      "returns": "f64"
+    },
+    {
+      "name": "claim",
+      "accounts": [
+        { "name": "userStakeAccount", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [],
+      "returns": "f64"
+    }
+  ],
+  "accounts": [
+    { "name": "StakePool", "type": { "kind": "struct", "fields": [{ "name": "totalStakedAmount", "type": "u64" }] } },
+    {
+      "name": "UserStake",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "user", "type": "publicKey" },
+          { "name": "amount", "type": "u64" },
+          { "name": "lastTimestamp", "type": "u64" }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "InvalidTimestamp", "msg": "The last timestamp is later than the current timestamp." },
+    { "code": 6001, "name": "StakingDurationTooShort", "msg": "Lock period is not over" }
+  ]
+}
