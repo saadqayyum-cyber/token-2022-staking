@@ -37,7 +37,7 @@ function Header() {
               <div className="logo-container">
                 <img src={logo} alt="Logo" className="h-8 logo-image" />
 
-                <span className="logo-text">TOKEN 2022 STAKING</span>
+                <span className="logo-text">AIChainCoin Staking</span>
               </div>
             </div>
           </Link>
@@ -53,7 +53,7 @@ function Header() {
             <Link to="/claim-rewards" className="block px-4 py-4 text-md text-white hover:bg-purple-medium">
               Claim Rewards
             </Link>
-            <Link to="/claim-rewards" className="block px-4 py-4 text-md text-white hover:bg-purple-medium">
+            <Link to="/advanced-rewards-view" className="block px-4 py-4 text-md text-white hover:bg-purple-medium">
               Advanced Rewards View
             </Link>
             {/* {wallet?.publicKey?.toBase58() == admin && ( */}
@@ -97,6 +97,9 @@ function Header() {
           </Link>
           <Link to="/claim-rewards" className="block px-4 py-4 text-md text-white hover:bg-purple-medium">
             Claim Rewards
+          </Link>
+          <Link to="/advanced-rewards-view" className="block px-4 py-4 text-md text-white hover:bg-purple-medium">
+            Advanced Rewards View
           </Link>
           {/* {wallet?.publicKey?.toBase58() == admin && ( */}
           <Link to="/admin-dashboard" className="block px-4 py-4 text-md text-white hover:bg-purple-medium">

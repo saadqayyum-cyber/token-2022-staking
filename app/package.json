@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
+    "@metaplex-foundation/mpl-candy-guard": "^0.5.0",
     "@solana/spl-token": "^0.4.7",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",

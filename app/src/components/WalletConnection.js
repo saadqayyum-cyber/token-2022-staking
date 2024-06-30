@@ -13,13 +13,9 @@ import {
 } from "@solana/wallet-adapter-wallets";
 
 const WalletConnection = () => {
-  // Devnet
   const network = WalletAdapterNetwork.Devnet;
-  const endpoint = "https://solana-devnet.g.alchemy.com/v2/wmcq5BVREBIxSjF20Ep4FVViWbICGueG";
+  const endpoint = "https://api.devnet.solana.com";
 
-  // Mainnet
-  // const network = WalletAdapterNetwork.Mainnet;
-  // const endpoint = process.env.REACT_APP_MAINNET_RPC_URL;
   const wallets = useMemo(
     () => [
       new UnsafeBurnerWalletAdapter(),
@@ -27,7 +23,6 @@ const WalletConnection = () => {
       new SolflareWalletAdapter({ network }),
       new TorusWalletAdapter(),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [network]
   );
 
