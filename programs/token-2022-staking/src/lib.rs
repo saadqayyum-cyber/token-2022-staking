@@ -23,8 +23,6 @@ pub mod token_2022_staking {
 
         config.authority = *ctx.accounts.authority.key;
         config.min_stake_period = min_stake_period;
-        config.reward_balance = 0;
-
         Ok(())
     }
 
@@ -56,8 +54,6 @@ pub mod token_2022_staking {
         amount: u64,
         token_tax_percentage: u64,
     ) -> Result<()> {
-        let config = &mut ctx.accounts.config;
-
         // Transfer tokens from the depositor to the contract's reward account
         let cpi_accounts = TransferCheckedWithFee {
             token_program_id: ctx.accounts.token_program.to_account_info(),
@@ -73,9 +69,6 @@ pub mod token_2022_staking {
         let fee = (amount as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
 
         transfer_checked_with_fee(cpi_ctx, amount, 9, fee)?;
-
-        // Update the reward balance
-        config.reward_balance += amount;
 
         Ok(())
     }
@@ -111,7 +104,7 @@ pub mod token_2022_staking {
 
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, seeds);
 
-        let total_reward_balance = config.reward_balance;
+        let total_reward_balance = ctx.accounts.config_ata.amount;
         let fee = (total_reward_balance as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
 
         transfer_checked_with_fee(cpi_ctx, total_reward_balance, 9, fee)?;
@@ -220,13 +213,12 @@ pub mod token_2022_staking {
         let token_decimals = 9;
         let total_reward_u64 = (total_reward * 10u64.pow(token_decimals as u32) as f64) as u64;
 
+        let current_rewards_balance = ctx.accounts.config_ata.amount;
+
         // Ensure there are enough rewards in the contract
-        if config.reward_balance < total_reward_u64 {
+        if current_rewards_balance < total_reward_u64 {
             return Err(ErrorCode::InsufficientRewards.into());
         }
-
-        // Update reward balance in state
-        config.reward_balance -= total_reward_u64;
 
         // Transfer Tokens from contract account to user account
         let cpi_accounts = TransferCheckedWithFee {
@@ -285,13 +277,12 @@ pub mod token_2022_staking {
         let token_decimals = 9;
         let total_reward_u64 = (total_reward * 10u64.pow(token_decimals as u32) as f64) as u64;
 
+        let current_rewards_balance = ctx.accounts.config_ata.amount;
+
         // Ensure there are enough rewards in the contract
-        if config.reward_balance < total_reward_u64 {
+        if current_rewards_balance < total_reward_u64 {
             return Err(ErrorCode::InsufficientRewards.into());
         }
-
-        // Update reward balance in state
-        config.reward_balance -= total_reward_u64;
 
         // Transfer Tokens from contract account to user account
         let cpi_accounts = TransferCheckedWithFee {
@@ -588,12 +579,11 @@ pub struct Withdraw<'info> {
 pub struct Config {
     pub authority: Pubkey,
     pub min_stake_period: i64,
-    pub reward_balance: u64,
 }
 
 impl Config {
     const DISCRIMINATOR: usize = 8;
-    pub const LEN: usize = Self::DISCRIMINATOR + 32 + 8 + 8;
+    pub const LEN: usize = Self::DISCRIMINATOR + 32 + 8;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
