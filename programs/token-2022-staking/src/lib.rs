@@ -6,10 +6,14 @@ use anchor_spl::{
     token_interface::{Mint, Token2022, TokenAccount},
 };
 
-declare_id!("GcAYtwy7GCAPik2EKmDxixVtzzNy71LznQnZQ4qZxhKe");
+use spl_token_2022::extension::{transfer_fee::TransferFeeConfig, StateWithExtensions};
+
+declare_id!("Gz5PGkF4qeXbZ178uXVvgpHFHVZaYxQibe5WKmDNuLEb");
 
 #[program]
 pub mod token_2022_staking {
+
+    use spl_token_2022::extension::BaseStateWithExtensions;
 
     use super::*;
 
@@ -75,9 +79,43 @@ pub mod token_2022_staking {
         let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
         let token_decimals = ctx.accounts.config.decimals;
 
+        // -- Maximum Fee
+
+        let mint = &ctx.accounts.token_mint.to_account_info();
+
+        // Load the TransferFeeConfig extension data
+        let mint_data = mint.data.borrow();
+        let state_with_extensions =
+            StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
+
+        let transfer_fee_config = state_with_extensions
+            .get_extension::<TransferFeeConfig>()
+            .map_err(|_| ErrorCode::NoTransferFeeConfig)?;
+
+        let older_maximum_fee: u64 = transfer_fee_config.older_transfer_fee.maximum_fee.into();
+        // let older_epoch: u64 = transfer_fee_config.older_transfer_fee.epoch.into();
+        let newer_maximum_fee: u64 = transfer_fee_config.newer_transfer_fee.maximum_fee.into();
+        let newer_epoch: u64 = transfer_fee_config.newer_transfer_fee.epoch.into();
+
+        // Get the current epoch from the Clock sysvar
+        let clock = Clock::get()?;
+        let current_epoch = clock.epoch;
+
+        let maximum_fee = if current_epoch < newer_epoch {
+            older_maximum_fee
+        } else {
+            newer_maximum_fee
+        };
+
         let fee = (amount * token_tax_percentage + 99) / 100;
 
-        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, fee)?;
+        let mut final_fee = fee;
+
+        if fee > maximum_fee {
+            final_fee = maximum_fee;
+        }
+
+        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, final_fee)?;
 
         Ok(())
     }
@@ -115,18 +153,46 @@ pub mod token_2022_staking {
 
         let total_reward_balance = ctx.accounts.config_ata.amount;
 
-        msg!("Total Reward Balance: {}", total_reward_balance);
-
         let token_tax_percentage = config.tax_percentage as u64;
         let token_decimals = config.decimals;
 
-        // let fee = (total_reward_balance as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
+        // -- Maximum Fee
+
+        let mint = &ctx.accounts.token_mint.to_account_info();
+
+        // Load the TransferFeeConfig extension data
+        let mint_data = mint.data.borrow();
+        let state_with_extensions =
+            StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
+
+        let transfer_fee_config = state_with_extensions
+            .get_extension::<TransferFeeConfig>()
+            .map_err(|_| ErrorCode::NoTransferFeeConfig)?;
+
+        let older_maximum_fee: u64 = transfer_fee_config.older_transfer_fee.maximum_fee.into();
+        // let older_epoch: u64 = transfer_fee_config.older_transfer_fee.epoch.into();
+        let newer_maximum_fee: u64 = transfer_fee_config.newer_transfer_fee.maximum_fee.into();
+        let newer_epoch: u64 = transfer_fee_config.newer_transfer_fee.epoch.into();
+
+        // Get the current epoch from the Clock sysvar
+        let clock = Clock::get()?;
+        let current_epoch = clock.epoch;
+
+        let maximum_fee = if current_epoch < newer_epoch {
+            older_maximum_fee
+        } else {
+            newer_maximum_fee
+        };
 
         let fee = (total_reward_balance * token_tax_percentage + 99) / 100; // Adding 99 for correct rounding
 
-        msg!("Calculated fee: {}", fee);
+        let mut final_fee = fee;
 
-        transfer_checked_with_fee(cpi_ctx, total_reward_balance, token_decimals, fee)?;
+        if fee > maximum_fee {
+            final_fee = maximum_fee;
+        }
+
+        transfer_checked_with_fee(cpi_ctx, total_reward_balance, token_decimals, final_fee)?;
 
         Ok(())
     }
@@ -156,14 +222,51 @@ pub mod token_2022_staking {
         let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
         let token_decimals = ctx.accounts.config.decimals;
 
-        let fee = (amount as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
-        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, fee)?;
+        // -- Maximum Fee
+
+        let mint = &ctx.accounts.token_mint.to_account_info();
+
+        // Load the TransferFeeConfig extension data
+        let mint_data = mint.data.borrow();
+        let state_with_extensions =
+            StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
+
+        let transfer_fee_config = state_with_extensions
+            .get_extension::<TransferFeeConfig>()
+            .map_err(|_| ErrorCode::NoTransferFeeConfig)?;
+
+        let older_maximum_fee: u64 = transfer_fee_config.older_transfer_fee.maximum_fee.into();
+        // let older_epoch: u64 = transfer_fee_config.older_transfer_fee.epoch.into();
+        let newer_maximum_fee: u64 = transfer_fee_config.newer_transfer_fee.maximum_fee.into();
+        let newer_epoch: u64 = transfer_fee_config.newer_transfer_fee.epoch.into();
+
+        // Get the current epoch from the Clock sysvar
+        let clock = Clock::get()?;
+        let current_epoch = clock.epoch;
+
+        let maximum_fee = if current_epoch < newer_epoch {
+            older_maximum_fee
+        } else {
+            newer_maximum_fee
+        };
+
+        let fee = (amount * token_tax_percentage + 99) / 100; // Adding 99 for correct rounding
+
+        let mut final_fee = fee;
+
+        if fee > maximum_fee {
+            final_fee = maximum_fee;
+        }
+
+        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, final_fee)?;
 
         // Store Record
         user_stake_account.authority = ctx.accounts.user.key();
 
+        let final_stake_value = amount - final_fee;
+
         user_stake_account.stakes.push(StakeRecord {
-            amount,
+            amount: final_stake_value,
             timestamp: Clock::get()?.unix_timestamp,
         });
 
@@ -195,13 +298,50 @@ pub mod token_2022_staking {
         let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
         let token_decimals = ctx.accounts.config.decimals;
 
-        let fee = (amount as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
-        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, fee)?;
+        // -- Maximum Fee
+
+        let mint = &ctx.accounts.token_mint.to_account_info();
+
+        // Load the TransferFeeConfig extension data
+        let mint_data = mint.data.borrow();
+        let state_with_extensions =
+            StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
+
+        let transfer_fee_config = state_with_extensions
+            .get_extension::<TransferFeeConfig>()
+            .map_err(|_| ErrorCode::NoTransferFeeConfig)?;
+
+        let older_maximum_fee: u64 = transfer_fee_config.older_transfer_fee.maximum_fee.into();
+        // let older_epoch: u64 = transfer_fee_config.older_transfer_fee.epoch.into();
+        let newer_maximum_fee: u64 = transfer_fee_config.newer_transfer_fee.maximum_fee.into();
+        let newer_epoch: u64 = transfer_fee_config.newer_transfer_fee.epoch.into();
+
+        // Get the current epoch from the Clock sysvar
+        let clock = Clock::get()?;
+        let current_epoch = clock.epoch;
+
+        let maximum_fee = if current_epoch < newer_epoch {
+            older_maximum_fee
+        } else {
+            newer_maximum_fee
+        };
+
+        let fee = (amount * token_tax_percentage + 99) / 100; // Adding 99 for correct rounding
+
+        let mut final_fee = fee;
+
+        if fee > maximum_fee {
+            final_fee = maximum_fee;
+        }
+
+        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, final_fee)?;
 
         // Store Record
 
+        let final_stake_value = amount - final_fee;
+
         user_stake_account.stakes.push(StakeRecord {
-            amount,
+            amount: final_stake_value,
             timestamp: Clock::get()?.unix_timestamp,
         });
 
@@ -239,8 +379,7 @@ pub mod token_2022_staking {
         }
 
         // Convert total_reward to u64
-        let token_decimals = 9;
-        let total_reward_u64 = (total_reward * 10u64.pow(token_decimals as u32) as f64) as u64;
+        let total_reward_u64 = total_reward as u64;
 
         let current_rewards_balance = ctx.accounts.config_ata.amount;
 
@@ -270,9 +409,43 @@ pub mod token_2022_staking {
         let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
         let token_decimals = ctx.accounts.config.decimals;
 
+        // -- Maximum Fee
+
+        let mint = &ctx.accounts.token_mint.to_account_info();
+
+        // Load the TransferFeeConfig extension data
+        let mint_data = mint.data.borrow();
+        let state_with_extensions =
+            StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
+
+        let transfer_fee_config = state_with_extensions
+            .get_extension::<TransferFeeConfig>()
+            .map_err(|_| ErrorCode::NoTransferFeeConfig)?;
+
+        let older_maximum_fee: u64 = transfer_fee_config.older_transfer_fee.maximum_fee.into();
+        // let older_epoch: u64 = transfer_fee_config.older_transfer_fee.epoch.into();
+        let newer_maximum_fee: u64 = transfer_fee_config.newer_transfer_fee.maximum_fee.into();
+        let newer_epoch: u64 = transfer_fee_config.newer_transfer_fee.epoch.into();
+
+        // Get the current epoch from the Clock sysvar
+        let clock = Clock::get()?;
+        let current_epoch = clock.epoch;
+
+        let maximum_fee = if current_epoch < newer_epoch {
+            older_maximum_fee
+        } else {
+            newer_maximum_fee
+        };
+
         let fee = (total_amount_to_transfer * token_tax_percentage + 99) / 100;
 
-        transfer_checked_with_fee(cpi_ctx, total_amount_to_transfer, token_decimals, fee)?;
+        let mut final_fee = fee;
+
+        if fee > maximum_fee {
+            final_fee = maximum_fee;
+        }
+
+        transfer_checked_with_fee(cpi_ctx, total_amount_to_transfer, token_decimals, final_fee)?;
 
         // Remove all stakes
         user_stake_account.stakes.clear();
@@ -302,6 +475,7 @@ pub mod token_2022_staking {
 
         for stake in user_stake_account.stakes.iter_mut() {
             let duration = current_time - stake.timestamp;
+
             msg!("Current Time: {}", current_time);
             msg!("Stake Timestamp: {}", stake.timestamp);
             msg!("Duration: {}", duration);
@@ -316,8 +490,7 @@ pub mod token_2022_staking {
         }
 
         // Convert total_reward to u64
-        let token_decimals = 9;
-        let total_reward_u64 = (total_reward * 10u64.pow(token_decimals as u32) as f64) as u64;
+        let total_reward_u64 = total_reward as u64;
 
         let current_rewards_balance = ctx.accounts.config_ata.amount;
 
@@ -346,9 +519,43 @@ pub mod token_2022_staking {
         let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
         let token_decimals = ctx.accounts.config.decimals;
 
+        // -- Maximum Fee
+
+        let mint = &ctx.accounts.token_mint.to_account_info();
+
+        // Load the TransferFeeConfig extension data
+        let mint_data = mint.data.borrow();
+        let state_with_extensions =
+            StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
+
+        let transfer_fee_config = state_with_extensions
+            .get_extension::<TransferFeeConfig>()
+            .map_err(|_| ErrorCode::NoTransferFeeConfig)?;
+
+        let older_maximum_fee: u64 = transfer_fee_config.older_transfer_fee.maximum_fee.into();
+        // let older_epoch: u64 = transfer_fee_config.older_transfer_fee.epoch.into();
+        let newer_maximum_fee: u64 = transfer_fee_config.newer_transfer_fee.maximum_fee.into();
+        let newer_epoch: u64 = transfer_fee_config.newer_transfer_fee.epoch.into();
+
+        // Get the current epoch from the Clock sysvar
+        let clock = Clock::get()?;
+        let current_epoch = clock.epoch;
+
+        let maximum_fee = if current_epoch < newer_epoch {
+            older_maximum_fee
+        } else {
+            newer_maximum_fee
+        };
+
         let fee = (total_reward_u64 * token_tax_percentage + 99) / 100;
 
-        transfer_checked_with_fee(cpi_ctx, total_reward_u64, token_decimals, fee)?;
+        let mut final_fee = fee;
+
+        if fee > maximum_fee {
+            final_fee = maximum_fee;
+        }
+
+        transfer_checked_with_fee(cpi_ctx, total_reward_u64, token_decimals, final_fee)?;
 
         Ok(())
     }
@@ -723,6 +930,8 @@ pub enum ErrorCode {
     InsufficientRewards, // 6001
     #[msg("The token mint address does not match the config.")] // 6002
     TokenMintMismatch,
+    #[msg("No transfer fee configuration found for this mint.")] // 6003
+    NoTransferFeeConfig,
 }
 
 // ----------------------------------------------------------------------------------------------

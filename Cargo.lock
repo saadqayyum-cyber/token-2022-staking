@@ -2364,6 +2364,7 @@ dependencies = [
  "anchor-spl",
  "spl-pod",
  "spl-tlv-account-resolution",
+ "spl-token-2022",
  "spl-type-length-value",
 ]
 

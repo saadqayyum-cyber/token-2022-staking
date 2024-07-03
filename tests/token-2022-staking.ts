@@ -47,7 +47,7 @@ describe("token-2022-staking", async () => {
   );
 
   const [userStakeAccountPda, userStakeAccountPdaBump] = anchor.web3.PublicKey.findProgramAddressSync(
-    [authorityPublicKey.toBuffer()],
+    [new anchor.web3.PublicKey("HEWbAoGrvmYerTHZ5vbv887DmsMiB58c4skiiE7P6kvo").toBuffer()],
     program.programId
   );
 
@@ -75,8 +75,12 @@ describe("token-2022-staking", async () => {
   // -------------------------------------------------------------------------------------------------
 
   // it("Is initialized!", async () => {
+  //   const minimumStakePeriod = 30;
+  //   const tokenDecimals = 9;
+  //   const taxPercentage = 3;
+
   //   const tx = await program.methods
-  //     .initialize(new anchor.BN(30))
+  //     .initialize(new anchor.BN(minimumStakePeriod), tokenDecimals, taxPercentage)
   //     .accounts({
   //       authority: authorityPublicKey,
   //       tokenMint: TOKEN_MINT_PUBLIC_KEY,
@@ -108,7 +112,7 @@ describe("token-2022-staking", async () => {
 
   // it("Deposit Rewards", async () => {
   //   const tx = await program.methods
-  //     .depositRewards(new anchor.BN(100 * Math.pow(10, 9)), new anchor.BN(3))
+  //     .depositRewards(new anchor.BN(100 * Math.pow(10, 9)))
   //     .accounts({
   //       depositor: authorityPublicKey,
   //       depositorAta: authorityAssociatedTokenAccount,
@@ -119,18 +123,18 @@ describe("token-2022-staking", async () => {
   //   console.log("Your transaction signature", tx);
   // });
 
-  // it("Withdraw Rewards", async () => {
-  //   const tx = await program.methods
-  //     .withdraw(new anchor.BN(3), CONFIG_PDA.configPdaBump)
-  //     .accounts({
-  //       authority: authorityPublicKey,
-  //       authorityAta: authorityAssociatedTokenAccount,
-  //       tokenMint: TOKEN_MINT_PUBLIC_KEY,
-  //     })
-  //     .signers([authorityWallet])
-  //     .rpc();
-  //   console.log("Your transaction signature", tx);
-  // });
+  // // it("Withdraw Rewards", async () => {
+  // const tx = await program.methods
+  //   .withdraw(CONFIG_PDA.configPdaBump)
+  //   .accounts({
+  //     authority: authorityPublicKey,
+  //     authorityAta: authorityAssociatedTokenAccount,
+  //     tokenMint: TOKEN_MINT_PUBLIC_KEY,
+  //   })
+  //   .signers([authorityWallet])
+  //   .rpc();
+  // //   console.log("Your transaction signature", tx);
+  // // });
 
   // it("Stake", async () => {
   //   try {
@@ -140,7 +144,7 @@ describe("token-2022-staking", async () => {
 
   //     // Account Exists
   //     const tx = await program.methods
-  //       .stakeReallocx(new anchor.BN(10 * Math.pow(10, 9)), new anchor.BN(3))
+  //       .stakeReallocx(new anchor.BN(10 * Math.pow(10, 9)))
   //       .accounts({
   //         user: authorityPublicKey,
   //         userAta: authorityAssociatedTokenAccount,
@@ -155,7 +159,7 @@ describe("token-2022-staking", async () => {
   //     // Not Exists
   //     if (error.message && error.message.includes("Account does not exist")) {
   //       const tx = await program.methods
-  //         .stake(new anchor.BN(10 * Math.pow(10, 9)), new anchor.BN(3))
+  //         .stake(new anchor.BN(10 * Math.pow(10, 9)))
   //         .accounts({
   //           user: authorityPublicKey,
   //           userAta: authorityAssociatedTokenAccount,
@@ -171,7 +175,7 @@ describe("token-2022-staking", async () => {
   // it("Claim Rewards", async () => {
   //   try {
   //     const tx = await program.methods
-  //       .claimRewards(new anchor.BN(3), CONFIG_PDA.configPdaBump)
+  //       .claimRewards(CONFIG_PDA.configPdaBump)
   //       .accounts({
   //         user: authorityPublicKey,
   //         userAta: authorityAssociatedTokenAccount,
@@ -185,22 +189,22 @@ describe("token-2022-staking", async () => {
   //   }
   // });
 
-  it("Unstake", async () => {
-    try {
-      const tx = await program.methods
-        .unstake(new anchor.BN(3), CONFIG_PDA.configPdaBump)
-        .accounts({
-          user: authorityPublicKey,
-          userAta: authorityAssociatedTokenAccount,
-          tokenMint: TOKEN_MINT_PUBLIC_KEY,
-        })
-        .signers([authorityWallet])
-        .rpc();
-      console.log("Your transaction signature", tx);
-    } catch (error) {
-      console.log(error);
-    }
-  });
+  // it("Unstake", async () => {
+  //   try {
+  //     const tx = await program.methods
+  //       .unstake(CONFIG_PDA.configPdaBump)
+  //       .accounts({
+  //         user: authorityPublicKey,
+  //         userAta: authorityAssociatedTokenAccount,
+  //         tokenMint: TOKEN_MINT_PUBLIC_KEY,
+  //       })
+  //       .signers([authorityWallet])
+  //       .rpc();
+  //     console.log("Your transaction signature", tx);
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // });
 
   it("Reading Stake Account", async () => {
     try {
