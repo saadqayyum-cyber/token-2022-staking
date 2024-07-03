@@ -6,9 +6,7 @@ use anchor_spl::{
     token_interface::{Mint, Token2022, TokenAccount},
 };
 
-use anchor_lang::solana_program::{program::invoke, system_instruction, sysvar::rent::Rent};
-
-declare_id!("GrpKuGPVTNjUCTqfJRMKpph7XZdfuBcc1cTLfRdSm3Xv");
+declare_id!("GcAYtwy7GCAPik2EKmDxixVtzzNy71LznQnZQ4qZxhKe");
 
 #[program]
 pub mod token_2022_staking {
@@ -18,11 +16,19 @@ pub mod token_2022_staking {
     /**
      *! 1. INITIALIZE
      */
-    pub fn initialize(ctx: Context<Initialize>, min_stake_period: i64) -> Result<()> {
+    pub fn initialize(
+        ctx: Context<Initialize>,
+        min_stake_period: i64,
+        decimals: u8,
+        tax_percentage: u8,
+    ) -> Result<()> {
         let config = &mut ctx.accounts.config;
 
         config.authority = *ctx.accounts.authority.key;
         config.min_stake_period = min_stake_period;
+        config.token_mint_address = *ctx.accounts.token_mint.to_account_info().key;
+        config.decimals = decimals;
+        config.tax_percentage = tax_percentage;
         Ok(())
     }
 
@@ -49,11 +55,11 @@ pub mod token_2022_staking {
      *! 3. DEPOSIT TOKENS INTO CONTRACT
      */
 
-    pub fn deposit_rewards(
-        ctx: Context<DepositRewards>,
-        amount: u64,
-        token_tax_percentage: u64,
-    ) -> Result<()> {
+    pub fn deposit_rewards(ctx: Context<DepositRewards>, amount: u64) -> Result<()> {
+        if ctx.accounts.config.token_mint_address != ctx.accounts.token_mint.key() {
+            return Err(ErrorCode::TokenMintMismatch.into());
+        }
+
         // Transfer tokens from the depositor to the contract's reward account
         let cpi_accounts = TransferCheckedWithFee {
             token_program_id: ctx.accounts.token_program.to_account_info(),
@@ -66,9 +72,12 @@ pub mod token_2022_staking {
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
-        let fee = (amount as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
+        let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
+        let token_decimals = ctx.accounts.config.decimals;
 
-        transfer_checked_with_fee(cpi_ctx, amount, 9, fee)?;
+        let fee = (amount * token_tax_percentage + 99) / 100;
+
+        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, fee)?;
 
         Ok(())
     }
@@ -77,17 +86,17 @@ pub mod token_2022_staking {
      *! 4. WITHDRAW TOKENS FROM CONTRACT (Admin Only)
      */
 
-    pub fn withdraw(
-        ctx: Context<Withdraw>,
-        token_tax_percentage: u64,
-        config_pda_bump: u8,
-    ) -> Result<()> {
+    pub fn withdraw(ctx: Context<Withdraw>, config_pda_bump: u8) -> Result<()> {
         let config = &mut ctx.accounts.config;
 
         require!(
             *ctx.accounts.authority.key == config.authority,
             ErrorCode::Unauthorized
         );
+
+        if config.token_mint_address != ctx.accounts.token_mint.key() {
+            return Err(ErrorCode::TokenMintMismatch.into());
+        }
 
         // Transfer Tokens from contract account to user account
         let cpi_accounts = TransferCheckedWithFee {
@@ -105,17 +114,31 @@ pub mod token_2022_staking {
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, seeds);
 
         let total_reward_balance = ctx.accounts.config_ata.amount;
-        let fee = (total_reward_balance as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
 
-        transfer_checked_with_fee(cpi_ctx, total_reward_balance, 9, fee)?;
+        msg!("Total Reward Balance: {}", total_reward_balance);
+
+        let token_tax_percentage = config.tax_percentage as u64;
+        let token_decimals = config.decimals;
+
+        // let fee = (total_reward_balance as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
+
+        let fee = (total_reward_balance * token_tax_percentage + 99) / 100; // Adding 99 for correct rounding
+
+        msg!("Calculated fee: {}", fee);
+
+        transfer_checked_with_fee(cpi_ctx, total_reward_balance, token_decimals, fee)?;
 
         Ok(())
     }
 
     /**
-     *! 5. STAKE
+     *! 5a. STAKE
      */
-    pub fn stake(ctx: Context<Stake>, amount: u64, token_tax_percentage: u64) -> Result<()> {
+    pub fn stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
+        if ctx.accounts.config.token_mint_address != ctx.accounts.token_mint.key() {
+            return Err(ErrorCode::TokenMintMismatch.into());
+        }
+
         let user_stake_account = &mut ctx.accounts.user_stake_account;
 
         // Transfer Tokens from user account to contract account
@@ -130,50 +153,53 @@ pub mod token_2022_staking {
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
+        let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
+        let token_decimals = ctx.accounts.config.decimals;
+
         let fee = (amount as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
-        transfer_checked_with_fee(cpi_ctx, amount, 9, fee)?;
-
-        // Check if vector has enough space
-        let current_len = user_stake_account.stakes.len();
-
-        // Calculate space required for current stakes and the new one
-        let required_space = UserStakeAccount::DISCRIMINATOR
-            + 32
-            + UserStakeAccount::VECTOR_LENGTH_PREFIX
-            + (current_len + 1) * StakeRecord::LEN;
-
-        // If required space is more than the current allocation, reallocate
-        if user_stake_account.to_account_info().data_len() < required_space {
-            let rent = Rent::get()?;
-            // let additional_space = required_space - user_stake_account.to_account_info().data_len();
-            let additional_lamports = rent.minimum_balance(required_space)
-                - rent.minimum_balance(user_stake_account.to_account_info().data_len());
-
-            let payer_account_info = ctx.accounts.user.to_account_info();
-            let target_account_info = user_stake_account.to_account_info();
-            let system_program_info = ctx.accounts.system_program.to_account_info();
-
-            // Reallocate the account
-            user_stake_account
-                .to_account_info()
-                .realloc(required_space, false)?;
-
-            // Transfer additional lamports to cover the new space
-            invoke(
-                &system_instruction::transfer(
-                    payer_account_info.key,
-                    target_account_info.key,
-                    additional_lamports,
-                ),
-                &[
-                    payer_account_info.clone(),
-                    target_account_info.clone(),
-                    system_program_info.clone(),
-                ],
-            )?;
-        }
+        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, fee)?;
 
         // Store Record
+        user_stake_account.authority = ctx.accounts.user.key();
+
+        user_stake_account.stakes.push(StakeRecord {
+            amount,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+
+        Ok(())
+    }
+
+    /**
+     *! 5b. STAKE
+     */
+    pub fn stake_reallocx(ctx: Context<StakeRealloc>, amount: u64) -> Result<()> {
+        if ctx.accounts.config.token_mint_address != ctx.accounts.token_mint.key() {
+            return Err(ErrorCode::TokenMintMismatch.into());
+        }
+
+        let user_stake_account = &mut ctx.accounts.user_stake_account;
+
+        // Transfer Tokens from user account to contract account
+        let cpi_accounts = TransferCheckedWithFee {
+            token_program_id: ctx.accounts.token_program.to_account_info(),
+            source: ctx.accounts.user_ata.to_account_info(),
+            destination: ctx.accounts.config_ata.to_account_info(),
+            authority: ctx.accounts.user.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
+        };
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+
+        let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
+        let token_decimals = ctx.accounts.config.decimals;
+
+        let fee = (amount as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
+        transfer_checked_with_fee(cpi_ctx, amount, token_decimals, fee)?;
+
+        // Store Record
+
         user_stake_account.stakes.push(StakeRecord {
             amount,
             timestamp: Clock::get()?.unix_timestamp,
@@ -186,11 +212,11 @@ pub mod token_2022_staking {
      *! 6. UNSTAKE
      */
 
-    pub fn unstake(
-        ctx: Context<Unstake>,
-        token_tax_percentage: u64,
-        config_pda_bump: u8,
-    ) -> Result<()> {
+    pub fn unstake(ctx: Context<Unstake>, config_pda_bump: u8) -> Result<()> {
+        if ctx.accounts.config.token_mint_address != ctx.accounts.token_mint.key() {
+            return Err(ErrorCode::TokenMintMismatch.into());
+        }
+
         let user_stake_account = &mut ctx.accounts.user_stake_account;
         let config = &mut ctx.accounts.config;
 
@@ -198,14 +224,17 @@ pub mod token_2022_staking {
         let annual_rate = 0.15; // APY of 15%
         let seconds_in_year = 365.0 * 24.0 * 3600.0;
         let second_rate = annual_rate / seconds_in_year; // Rate per second
+        let min_stake_period_seconds = config.min_stake_period * 86_400;
 
         let mut total_reward = 0.0;
+        let mut total_staked_amount = 0;
 
         for stake in user_stake_account.stakes.iter_mut() {
             let duration = current_time - stake.timestamp;
-            if duration >= config.min_stake_period {
+            if duration >= min_stake_period_seconds {
                 let reward_duration = duration as f64; // Duration in seconds
                 total_reward += stake.amount as f64 * second_rate * reward_duration;
+                total_staked_amount += stake.amount;
             }
         }
 
@@ -219,6 +248,9 @@ pub mod token_2022_staking {
         if current_rewards_balance < total_reward_u64 {
             return Err(ErrorCode::InsufficientRewards.into());
         }
+
+        // Calculate the total amount to transfer (rewards + staked amount)
+        let total_amount_to_transfer = total_reward_u64 + total_staked_amount;
 
         // Transfer Tokens from contract account to user account
         let cpi_accounts = TransferCheckedWithFee {
@@ -235,9 +267,12 @@ pub mod token_2022_staking {
 
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, seeds);
 
-        let fee = (total_reward_u64 as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
+        let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
+        let token_decimals = ctx.accounts.config.decimals;
 
-        transfer_checked_with_fee(cpi_ctx, total_reward_u64, 9, fee)?;
+        let fee = (total_amount_to_transfer * token_tax_percentage + 99) / 100;
+
+        transfer_checked_with_fee(cpi_ctx, total_amount_to_transfer, token_decimals, fee)?;
 
         // Remove all stakes
         user_stake_account.stakes.clear();
@@ -249,11 +284,11 @@ pub mod token_2022_staking {
      *! 7. CLAIM REWARDS
      */
 
-    pub fn claim_rewards(
-        ctx: Context<ClaimRewards>,
-        token_tax_percentage: u64,
-        config_pda_bump: u8,
-    ) -> Result<()> {
+    pub fn claim_rewards(ctx: Context<ClaimRewards>, config_pda_bump: u8) -> Result<()> {
+        if ctx.accounts.config.token_mint_address != ctx.accounts.token_mint.key() {
+            return Err(ErrorCode::TokenMintMismatch.into());
+        }
+
         let user_stake_account = &mut ctx.accounts.user_stake_account;
         let config = &mut ctx.accounts.config;
 
@@ -261,12 +296,19 @@ pub mod token_2022_staking {
         let annual_rate = 0.15; // APY of 15%
         let seconds_in_year = 365.0 * 24.0 * 3600.0;
         let second_rate = annual_rate / seconds_in_year; // Rate per second
+        let min_stake_period_seconds = config.min_stake_period * 86_400;
 
         let mut total_reward = 0.0;
 
         for stake in user_stake_account.stakes.iter_mut() {
             let duration = current_time - stake.timestamp;
-            if duration >= config.min_stake_period {
+            msg!("Current Time: {}", current_time);
+            msg!("Stake Timestamp: {}", stake.timestamp);
+            msg!("Duration: {}", duration);
+            msg!("Min Stake Period: {}", min_stake_period_seconds);
+            msg!("Validation: {}", duration >= config.min_stake_period);
+
+            if duration >= min_stake_period_seconds {
                 let reward_duration = duration as f64; // Duration in seconds
                 total_reward += stake.amount as f64 * second_rate * reward_duration;
                 stake.timestamp = current_time;
@@ -279,6 +321,8 @@ pub mod token_2022_staking {
 
         let current_rewards_balance = ctx.accounts.config_ata.amount;
 
+        msg!("Current Reward Balance: {}", current_rewards_balance);
+        msg!("Total Rewards u64: {}", total_reward_u64);
         // Ensure there are enough rewards in the contract
         if current_rewards_balance < total_reward_u64 {
             return Err(ErrorCode::InsufficientRewards.into());
@@ -299,16 +343,19 @@ pub mod token_2022_staking {
 
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, seeds);
 
-        let fee = (total_reward_u64 as f64 * (token_tax_percentage as f64 / 100.0)) as u64;
+        let token_tax_percentage = ctx.accounts.config.tax_percentage as u64;
+        let token_decimals = ctx.accounts.config.decimals;
 
-        transfer_checked_with_fee(cpi_ctx, total_reward_u64, 9, fee)?;
+        let fee = (total_reward_u64 * token_tax_percentage + 99) / 100;
+
+        transfer_checked_with_fee(cpi_ctx, total_reward_u64, token_decimals, fee)?;
 
         Ok(())
     }
 }
 
 // ----------------------------------------------------------------------------------------------
-//                                  Instruction Structs
+//                                  Instruction Contexts
 // ----------------------------------------------------------------------------------------------
 
 #[derive(Accounts)]
@@ -359,14 +406,14 @@ pub struct UpdateMinStakePeriod<'info> {
 #[derive(Accounts)]
 pub struct DepositRewards<'info> {
     #[account(
-        seeds = [CONFIG_ATA_SEED.as_ref()],
+        seeds = [CONFIG_PDA_SEED.as_ref()],
         bump,
         mut
     )]
     pub config: Account<'info, Config>,
 
     #[account(
-        seeds = [CONFIG_PDA_SEED.as_ref()],
+        seeds = [CONFIG_ATA_SEED.as_ref()],
         bump,
         mut,
         token::mint = token_mint,
@@ -378,7 +425,7 @@ pub struct DepositRewards<'info> {
     #[account(
         mut,
         token::mint = token_mint,
-        // token::authority = depositor,
+        token::authority = depositor,
         token::token_program = token_program,
     )]
     pub depositor_ata: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -393,16 +440,16 @@ pub struct DepositRewards<'info> {
 }
 
 #[derive(Accounts)]
-pub struct Stake<'info> {
+pub struct Withdraw<'info> {
     #[account(
-        seeds = [CONFIG_ATA_SEED.as_ref()],
+        seeds = [CONFIG_PDA_SEED.as_ref()],
         bump,
         mut
     )]
     pub config: Account<'info, Config>,
 
     #[account(
-        seeds = [CONFIG_PDA_SEED.as_ref()],
+        seeds = [CONFIG_ATA_SEED.as_ref()],
         bump,
         mut,
         token::mint = token_mint,
@@ -412,11 +459,99 @@ pub struct Stake<'info> {
     pub config_ata: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
-        init_if_needed,
+        mut,
+        token::mint = token_mint,
+        token::authority = authority,
+        token::token_program = token_program,
+    )]
+    pub authority_ata: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mint::token_program = token_program
+    )]
+    pub token_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token2022>,
+}
+
+#[derive(Accounts)]
+pub struct Stake<'info> {
+    #[account(
+        seeds = [CONFIG_PDA_SEED.as_ref()],
+        bump,
+        mut
+    )]
+    pub config: Account<'info, Config>,
+
+    #[account(
+        seeds = [CONFIG_ATA_SEED.as_ref()],
+        bump,
+        mut,
+        token::mint = token_mint,
+        token::authority = config,
+        token::token_program = token_program,
+    )]
+    pub config_ata: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        init,
         seeds = [user.key().as_ref()],
         bump,
         payer = user,
-        space = UserStakeAccount::LEN,
+        space = UserStakeAccount::LEN
+    )]
+    pub user_stake_account: Account<'info, UserStakeAccount>,
+
+    #[account(
+        mut,
+        token::mint = token_mint,
+        token::authority = user,
+        token::token_program = token_program,
+    )]
+    pub user_ata: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mint::token_program = token_program
+    )]
+    pub token_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token2022>,
+}
+
+#[derive(Accounts)]
+pub struct StakeRealloc<'info> {
+    #[account(
+        seeds = [CONFIG_PDA_SEED.as_ref()],
+        bump,
+        mut
+    )]
+    pub config: Account<'info, Config>,
+
+    #[account(
+        seeds = [CONFIG_ATA_SEED.as_ref()],
+        bump,
+        mut,
+        token::mint = token_mint,
+        token::authority = config,
+        token::token_program = token_program,
+    )]
+    pub config_ata: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        seeds = [user.key().as_ref()],
+        bump,
+        mut,
+        realloc = UserStakeAccount::LEN  + std::mem::size_of_val(&user_stake_account) + std::mem::size_of::<UserStakeAccount>(),
+        realloc::payer = user,
+        realloc::zero = false,
     )]
     pub user_stake_account: Account<'info, UserStakeAccount>,
 
@@ -443,14 +578,14 @@ pub struct Stake<'info> {
 #[derive(Accounts)]
 pub struct Unstake<'info> {
     #[account(
-        seeds = [CONFIG_ATA_SEED.as_ref()],
+        seeds = [CONFIG_PDA_SEED.as_ref()],
         bump,
         mut
     )]
     pub config: Account<'info, Config>,
 
     #[account(
-        seeds = [CONFIG_PDA_SEED.as_ref()],
+        seeds = [CONFIG_ATA_SEED.as_ref()],
         bump,
         mut,
         token::mint = token_mint,
@@ -489,14 +624,14 @@ pub struct Unstake<'info> {
 #[derive(Accounts)]
 pub struct ClaimRewards<'info> {
     #[account(
-        seeds = [CONFIG_ATA_SEED.as_ref()],
+        seeds = [CONFIG_PDA_SEED.as_ref()],
         bump,
         mut
     )]
     pub config: Account<'info, Config>,
 
     #[account(
-        seeds = [CONFIG_PDA_SEED.as_ref()],
+        seeds = [CONFIG_ATA_SEED.as_ref()],
         bump,
         mut,
         token::mint = token_mint,
@@ -532,45 +667,6 @@ pub struct ClaimRewards<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
-#[derive(Accounts)]
-pub struct Withdraw<'info> {
-    #[account(
-        seeds = [CONFIG_ATA_SEED.as_ref()],
-        bump,
-        mut
-    )]
-    pub config: Account<'info, Config>,
-
-    #[account(
-        seeds = [CONFIG_PDA_SEED.as_ref()],
-        bump,
-        mut,
-        token::mint = token_mint,
-        token::authority = config,
-        token::token_program = token_program,
-    )]
-    pub config_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(
-        mut,
-        token::mint = token_mint,
-        token::authority = authority,
-        token::token_program = token_program,
-    )]
-    pub authority_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(
-        mint::token_program = token_program
-    )]
-    pub token_mint: Box<InterfaceAccount<'info, Mint>>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token2022>,
-}
-
 // ----------------------------------------------------------------------------------------------
 //                                  PDAs
 // ----------------------------------------------------------------------------------------------
@@ -579,11 +675,14 @@ pub struct Withdraw<'info> {
 pub struct Config {
     pub authority: Pubkey,
     pub min_stake_period: i64,
+    pub token_mint_address: Pubkey,
+    pub decimals: u8,
+    pub tax_percentage: u8,
 }
 
 impl Config {
     const DISCRIMINATOR: usize = 8;
-    pub const LEN: usize = Self::DISCRIMINATOR + 32 + 8;
+    pub const LEN: usize = Self::DISCRIMINATOR + 32 + 8 + 32 + 1 + 1;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -622,6 +721,8 @@ pub enum ErrorCode {
     Unauthorized, // 6000
     #[msg("Insufficient rewards in the contract account")]
     InsufficientRewards, // 6001
+    #[msg("The token mint address does not match the config.")] // 6002
+    TokenMintMismatch,
 }
 
 // ----------------------------------------------------------------------------------------------

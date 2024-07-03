@@ -5,13 +5,14 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-token_2022_staking = "GrpKuGPVTNjUCTqfJRMKpph7XZdfuBcc1cTLfRdSm3Xv"
+token_2022_staking = "GcAYtwy7GCAPik2EKmDxixVtzzNy71LznQnZQ4qZxhKe"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+# cluster = "Localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
