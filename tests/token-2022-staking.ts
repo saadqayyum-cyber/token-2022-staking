@@ -74,21 +74,21 @@ describe("token-2022-staking", async () => {
   //                                        TESTS
   // -------------------------------------------------------------------------------------------------
 
-  // it("Is initialized!", async () => {
-  //   const minimumStakePeriod = 30;
-  //   const tokenDecimals = 9;
-  //   const taxPercentage = 3;
+  it("Is initialized!", async () => {
+    const minimumStakePeriod = 30;
+    const tokenDecimals = 9;
+    const taxPercentage = 3;
 
-  //   const tx = await program.methods
-  //     .initialize(new anchor.BN(minimumStakePeriod), tokenDecimals, taxPercentage)
-  //     .accounts({
-  //       authority: authorityPublicKey,
-  //       tokenMint: TOKEN_MINT_PUBLIC_KEY,
-  //     })
-  //     .signers([authorityWallet])
-  //     .rpc();
-  //   console.log("Your transaction signature", tx);
-  // });
+    const tx = await program.methods
+      .initialize(new anchor.BN(minimumStakePeriod), tokenDecimals, taxPercentage)
+      .accounts({
+        authority: authorityPublicKey,
+        tokenMint: authorityPublicKey,
+      })
+      .signers([authorityWallet])
+      .rpc();
+    console.log("Your transaction signature", tx);
+  });
 
   // it("Reading Config Account", async () => {
   //   const config = await program.account.config.fetch(CONFIG_PDA.configPda);

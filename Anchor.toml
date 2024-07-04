@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-token_2022_staking = "Gz5PGkF4qeXbZ178uXVvgpHFHVZaYxQibe5WKmDNuLEb"
+token_2022_staking = "DFgDg9Mc69FcWcsSHTPimE35x3W8uGdAZGCGWSeseFWh"
 
 [registry]
 url = "https://api.apr.dev"

@@ -8,7 +8,7 @@ use anchor_spl::{
 
 use spl_token_2022::extension::{transfer_fee::TransferFeeConfig, StateWithExtensions};
 
-declare_id!("Gz5PGkF4qeXbZ178uXVvgpHFHVZaYxQibe5WKmDNuLEb");
+declare_id!("DFgDg9Mc69FcWcsSHTPimE35x3W8uGdAZGCGWSeseFWh");
 
 #[program]
 pub mod token_2022_staking {
